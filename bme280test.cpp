@@ -15,7 +15,7 @@ int main()
     Adafruit_BME280 bme;
     
     
-    if (bme.begin()) {
+    if (bme.begin(BME280_ADDRESS, "/dev/i2c-1")) {
         printf("Temperature = %.2f *C\n", bme.readTemperature());
         printf("Pressure = %.2f hPa\n", bme.readPressure() / 100.0F);
         printf("Approx. Altitude = %.2f m", bme.readAltitude(SEALEVELPRESSURE_HPA));

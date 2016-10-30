@@ -33,11 +33,8 @@ static int file = -1;
  ***************************************************************************/
 
 
-bool Adafruit_BME280::begin(uint8_t a) {
+bool Adafruit_BME280::begin(uint8_t a, const char *devName) {
     _i2caddr = a;
-
-    char buf[10];
-    const char * devName = "/dev/i2c-1";
 
     // Open up the I2C bus
     file = open(devName, O_RDWR);

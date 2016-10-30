@@ -119,7 +119,7 @@ class Adafruit_BME280_Unified : public Adafruit_Sensor
 class Adafruit_BME280
 {
   public:
-    bool  begin(uint8_t addr = BME280_ADDRESS);
+    bool  begin(uint8_t addr = BME280_ADDRESS, const char *devName = "/dev/i2c-1");
     float readTemperature(void);
     float readPressure(void);
     float readHumidity(void);
