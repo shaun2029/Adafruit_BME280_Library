@@ -17,15 +17,8 @@
 #ifndef __BME280_H__
 #define __BME280_H__
 
-#if (ARDUINO >= 100)
- #include "Arduino.h"
-#else
- #include "WProgram.h"
-#endif
-
-#include <Adafruit_Sensor.h>
-#include <Wire.h>
-
+    #include <stdint.h>
+ 
 /*=========================================================================
     I2C ADDRESS/BITS
     -----------------------------------------------------------------------*/
@@ -126,10 +119,6 @@ class Adafruit_BME280_Unified : public Adafruit_Sensor
 class Adafruit_BME280
 {
   public:
-    Adafruit_BME280(void);
-    Adafruit_BME280(int8_t cspin);
-    Adafruit_BME280(int8_t cspin, int8_t mosipin, int8_t misopin, int8_t sckpin);
-
     bool  begin(uint8_t addr = BME280_ADDRESS);
     float readTemperature(void);
     float readPressure(void);
@@ -142,13 +131,13 @@ class Adafruit_BME280
     void readCoefficients(void);
     uint8_t spixfer(uint8_t x);
 
-    void      write8(byte reg, byte value);
-    uint8_t   read8(byte reg);
-    uint16_t  read16(byte reg);
-    uint32_t  read24(byte reg);
-    int16_t   readS16(byte reg);
-    uint16_t  read16_LE(byte reg); // little endian
-    int16_t   readS16_LE(byte reg); // little endian
+    int      write8(uint8_t reg, uint8_t value);
+    uint8_t   read8(uint8_t reg);
+    uint16_t  read16(uint8_t reg);
+    uint32_t  read24(uint8_t reg);
+    int16_t   readS16(uint8_t reg);
+    uint16_t  read16_LE(uint8_t reg); // little endian
+    int16_t   readS16_LE(uint8_t reg); // little endian
 
     uint8_t   _i2caddr;
     int32_t   _sensorID;

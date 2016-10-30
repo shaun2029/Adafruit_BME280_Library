@@ -14,10 +14,18 @@
   Written by Limor Fried & Kevin Townsend for Adafruit Industries.
   BSD license, all text above must be included in any redistribution
  ***************************************************************************/
-#include "Arduino.h"
-#include <Wire.h>
-#include <SPI.h>
+#include <unistd.h>
+#include <errno.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <linux/i2c-dev.h>
+#include <sys/ioctl.h>
+#include <fcntl.h>
+#include <stdint.h>
+#include <math.h>
 #include "Adafruit_BME280.h"
+
+static int file = -1;
 
 
 /***************************************************************************
@@ -25,39 +33,27 @@
  ***************************************************************************/
 
 
-Adafruit_BME280::Adafruit_BME280()
-  : _cs(-1), _mosi(-1), _miso(-1), _sck(-1)
-{ }
-
-Adafruit_BME280::Adafruit_BME280(int8_t cspin)
-  : _cs(cspin), _mosi(-1), _miso(-1), _sck(-1)
-{ }
-
-Adafruit_BME280::Adafruit_BME280(int8_t cspin, int8_t mosipin, int8_t misopin, int8_t sckpin)
-  : _cs(cspin), _mosi(mosipin), _miso(misopin), _sck(sckpin)
-{ }
-
-
 bool Adafruit_BME280::begin(uint8_t a) {
-  _i2caddr = a;
+    _i2caddr = a;
 
-  if (_cs == -1) {
-    // i2c
-    Wire.begin();
-  } else {
-    digitalWrite(_cs, HIGH);
-    pinMode(_cs, OUTPUT);
+    char buf[10];
+    const char * devName = "/dev/i2c-1";
 
-    if (_sck == -1) {
-      // hardware SPI
-      SPI.begin();
-    } else {
-      // software SPI
-      pinMode(_sck, OUTPUT);
-      pinMode(_mosi, OUTPUT);
-      pinMode(_miso, INPUT);
+    // Open up the I2C bus
+    file = open(devName, O_RDWR);
+    if (file == -1)
+    {
+        perror(devName);
+        exit(1);
     }
-  }
+
+    // Specify the address of the slave device.
+    if (ioctl(file, I2C_SLAVE, _i2caddr) < 0)
+    {
+        perror("Failed to acquire bus access and/or talk to slave");
+        return false;
+    }
+
 
   if (read8(BME280_REGISTER_CHIPID) != 0x60)
     return false;
@@ -71,46 +67,26 @@ bool Adafruit_BME280::begin(uint8_t a) {
   return true;
 }
 
-uint8_t Adafruit_BME280::spixfer(uint8_t x) {
-  if (_sck == -1)
-    return SPI.transfer(x);
-
-  // software spi
-  //Serial.println("Software SPI");
-  uint8_t reply = 0;
-  for (int i=7; i>=0; i--) {
-    reply <<= 1;
-    digitalWrite(_sck, LOW);
-    digitalWrite(_mosi, x & (1<<i));
-    digitalWrite(_sck, HIGH);
-    if (digitalRead(_miso))
-      reply |= 1;
-  }
-  return reply;
-}
-
 /**************************************************************************/
 /*!
     @brief  Writes an 8 bit value over I2C/SPI
 */
 /**************************************************************************/
-void Adafruit_BME280::write8(byte reg, byte value)
+int Adafruit_BME280::write8(uint8_t reg, uint8_t value)
 {
-  if (_cs == -1) {
-    Wire.beginTransmission((uint8_t)_i2caddr);
-    Wire.write((uint8_t)reg);
-    Wire.write((uint8_t)value);
-    Wire.endTransmission();
-  } else {
-    if (_sck == -1)
-      SPI.beginTransaction(SPISettings(500000, MSBFIRST, SPI_MODE0));
-    digitalWrite(_cs, LOW);
-    spixfer(reg & ~0x80); // write, bit 7 low
-    spixfer(value);
-    digitalWrite(_cs, HIGH);
-    if (_sck == -1)
-      SPI.endTransaction();              // release the SPI bus
-  }
+    char buf[2];
+    int err = 0;
+
+	// Write a uint8_tto the slave.
+	buf[0] = reg;
+	buf[1] = value;
+	if (write(file, buf, 2) != 2)
+	{
+    	perror("Failed to write to the i2c bus");
+    	err = 1;
+	}
+	
+	return err;
 }
 
 /**************************************************************************/
@@ -118,28 +94,26 @@ void Adafruit_BME280::write8(byte reg, byte value)
     @brief  Reads an 8 bit value over I2C
 */
 /**************************************************************************/
-uint8_t Adafruit_BME280::read8(byte reg)
+uint8_t Adafruit_BME280::read8(uint8_t reg)
 {
-  uint8_t value;
+    uint8_t value;
 
-  if (_cs == -1) {
-    Wire.beginTransmission((uint8_t)_i2caddr);
-    Wire.write((uint8_t)reg);
-    Wire.endTransmission();
-    Wire.requestFrom((uint8_t)_i2caddr, (byte)1);
-    value = Wire.read();
+    int err = 0;
 
-  } else {
-    if (_sck == -1)
-      SPI.beginTransaction(SPISettings(500000, MSBFIRST, SPI_MODE0));
-    digitalWrite(_cs, LOW);
-    spixfer(reg | 0x80); // read, bit 7 high
-    value = spixfer(0);
-    digitalWrite(_cs, HIGH);
-    if (_sck == -1)
-      SPI.endTransaction();              // release the SPI bus
-  }
-  return value;
+	// Write register number to the slave.
+	if (write(file, (uint8_t *) &reg, 1) != 1)
+	{
+    	perror("Failed to write to the i2c bus");
+    	err = 1;
+	}
+	
+	if (read(file, (uint8_t *) &value, 1) != 1)
+	{
+    	perror("Failed to read from the i2c bus");
+    	err = 2;
+	}
+
+    return value;
 }
 
 /**************************************************************************/
@@ -147,32 +121,32 @@ uint8_t Adafruit_BME280::read8(byte reg)
     @brief  Reads a 16 bit value over I2C
 */
 /**************************************************************************/
-uint16_t Adafruit_BME280::read16(byte reg)
+uint16_t Adafruit_BME280::read16(uint8_t reg)
 {
-  uint16_t value;
+    uint16_t value;
+    char buf[2];
 
-  if (_cs == -1) {
-    Wire.beginTransmission((uint8_t)_i2caddr);
-    Wire.write((uint8_t)reg);
-    Wire.endTransmission();
-    Wire.requestFrom((uint8_t)_i2caddr, (byte)2);
-    value = (Wire.read() << 8) | Wire.read();
+    int err = 0;
 
-  } else {
-    if (_sck == -1)
-      SPI.beginTransaction(SPISettings(500000, MSBFIRST, SPI_MODE0));
-    digitalWrite(_cs, LOW);
-    spixfer(reg | 0x80); // read, bit 7 high
-    value = (spixfer(0) << 8) | spixfer(0);
-    digitalWrite(_cs, HIGH);
-    if (_sck == -1)
-      SPI.endTransaction();              // release the SPI bus
-  }
+	// Write register number to the slave.
+	if (write(file, (uint8_t *) &reg, 1) != 1)
+	{
+    	perror("Failed to write to the i2c bus");
+    	err = 1;
+	}
+	
+	if (read(file, buf, 2) != 2)
+	{
+    	perror("Failed to read from the i2c bus");
+    	err = 2;
+	}
+	
+	value = buf[0]<<8 | buf[1];
 
-  return value;
+    return value;
 }
 
-uint16_t Adafruit_BME280::read16_LE(byte reg) {
+uint16_t Adafruit_BME280::read16_LE(uint8_t reg) {
   uint16_t temp = read16(reg);
   return (temp >> 8) | (temp << 8);
 
@@ -183,13 +157,13 @@ uint16_t Adafruit_BME280::read16_LE(byte reg) {
     @brief  Reads a signed 16 bit value over I2C
 */
 /**************************************************************************/
-int16_t Adafruit_BME280::readS16(byte reg)
+int16_t Adafruit_BME280::readS16(uint8_t reg)
 {
   return (int16_t)read16(reg);
 
 }
 
-int16_t Adafruit_BME280::readS16_LE(byte reg)
+int16_t Adafruit_BME280::readS16_LE(uint8_t reg)
 {
   return (int16_t)read16_LE(reg);
 
@@ -202,40 +176,29 @@ int16_t Adafruit_BME280::readS16_LE(byte reg)
 */
 /**************************************************************************/
 
-uint32_t Adafruit_BME280::read24(byte reg)
+uint32_t Adafruit_BME280::read24(uint8_t reg)
 {
-  uint32_t value;
+    uint32_t value;
+    char buf[3];
 
-  if (_cs == -1) {
-    Wire.beginTransmission((uint8_t)_i2caddr);
-    Wire.write((uint8_t)reg);
-    Wire.endTransmission();
-    Wire.requestFrom((uint8_t)_i2caddr, (byte)3);
-    
-    value = Wire.read();
-    value <<= 8;
-    value |= Wire.read();
-    value <<= 8;
-    value |= Wire.read();
+    int err = 0;
 
-  } else {
-    if (_sck == -1)
-      SPI.beginTransaction(SPISettings(500000, MSBFIRST, SPI_MODE0));
-    digitalWrite(_cs, LOW);
-    spixfer(reg | 0x80); // read, bit 7 high
-    
-    value = spixfer(0);
-    value <<= 8;
-    value |= spixfer(0);
-    value <<= 8;
-    value |= spixfer(0);
+	// Write register number to the slave.
+	if (write(file, (uint8_t *) &reg, 1) != 1)
+	{
+    	perror("Failed to write to the i2c bus");
+    	err = 1;
+	}
+	
+	if (read(file, buf, 3) != 3)
+	{
+    	perror("Failed to read from the i2c bus");
+    	err = 2;
+	}
+	
+	value = buf[0]<<16 | buf[1]<<8 | buf[2];
 
-    digitalWrite(_cs, HIGH);
-    if (_sck == -1)
-      SPI.endTransaction();              // release the SPI bus
-  }
-
-  return value;
+    return value;
 }
 
 
