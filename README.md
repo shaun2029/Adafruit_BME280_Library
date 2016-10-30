@@ -1,4 +1,8 @@
-This is a library for the Adafruit BME280 Humidity, Barometric Pressure + Temp sensor
+Ported to Linux for the Raspberry Pi
+Note: Only supports I2C interface.
+
+
+This is a Linux library for the Adafruit BME280 Humidity, Barometric Pressure + Temp sensor
 
 Designed specifically to work with the Adafruit BME280 Breakout 
  * http://www.adafruit.com/products/2652
