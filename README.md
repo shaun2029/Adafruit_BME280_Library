@@ -1,6 +1,6 @@
 Ported to Linux for the Raspberry Pi
-Note: Only supports I2C interface.
 
+Note: Only supports I2C interface.
 
 This is a Linux library for the Adafruit BME280 Humidity, Barometric Pressure + Temp sensor
 
